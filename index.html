@@ -8,13 +8,41 @@
 :root{
   --ink:#1b1b1f; --mut:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; --card:#fff;
   --accent:#0f6cbd; --warn:#b45309; --danger:#b91c1c; --ok:#15803d;
-  --lane-h:26px;
+
+  /* 화면 크기 — body.ui-* 로 전환. JS가 같은 값을 읽어 행 높이를 계산한다. */
+  --lane-h:30px;    /* 막대 한 줄이 차지하는 높이 */
+  --bar-h:26px;     /* 막대 자체 높이 */
+  --bar-fs:13px;
+  --row-top:34px;   /* 날짜 숫자 영역 */
+  --row-min:98px;   /* 일정 없는 주의 최소 높이 */
+  --row-pad:6px;
+  --dnum:24px;
+  --fs:15px;
+  --maxw:1440px;
+  --backlog-h:200px;
+}
+body.ui-sm{
+  --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
+  --row-min:84px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px;
+}
+body.ui-lg{
+  --lane-h:36px; --bar-h:31px; --bar-fs:14.5px; --row-top:38px;
+  --row-min:120px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px;
+}
+body.ui-xl{
+  --lane-h:43px; --bar-h:37px; --bar-fs:16.5px; --row-top:44px;
+  --row-min:146px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px;
+}
+/* 인쇄 직전에만 붙는다. 화면 크기 설정과 무관하게 출력을 일정하게 만든다. */
+body.printing,body.printing.ui-sm,body.printing.ui-lg,body.printing.ui-xl{
+  --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
+  --row-min:84px; --dnum:21px; --fs:14px; --maxw:none;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
   font-family:"Segoe UI","Malgun Gothic",system-ui,-apple-system,sans-serif;
-  background:var(--bg); color:var(--ink); font-size:14px;
+  background:var(--bg); color:var(--ink); font-size:var(--fs);
 }
 button{font:inherit;color:inherit;cursor:pointer}
 input,select,textarea{font:inherit;color:inherit}
@@ -73,15 +101,19 @@ input,select,textarea{font:inherit;color:inherit}
 }
 .chip.on{opacity:1}
 .menu input[type=search]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px}
+.uisize{display:flex;align-items:center;gap:10px}
+.uisize span{flex:1;text-align:center;font-size:13px;font-weight:600}
+.uisize button{width:34px;padding:4px 0;font-size:15px;line-height:1}
+.uisize button:disabled{opacity:.35;cursor:default}
 .menu .row{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ---------- calendar ---------- */
-.wrap{padding:16px;max-width:1240px;margin:0 auto}
+.wrap{padding:16px;max-width:var(--maxw);margin:0 auto}
 .monthblock{margin-bottom:22px}
-.monthhead{font-weight:700;font-size:15px;margin:0 0 8px;padding-left:2px}
+.monthhead{font-weight:700;font-size:calc(var(--fs) + 1px);margin:0 0 8px;padding-left:2px}
 .cal{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .dow{display:grid;grid-template-columns:repeat(7,1fr);background:#fafbfc;border-bottom:1px solid var(--line)}
-.dow div{padding:7px 0;text-align:center;font-size:12px;color:var(--mut);font-weight:600}
+.dow div{padding:7px 0;text-align:center;font-size:calc(var(--fs) - 2px);color:var(--mut);font-weight:600}
 .dow div:first-child,.dow div:last-child{color:#9aa3af}
 .week{position:relative;border-bottom:1px solid var(--line)}
 .week:last-child{border-bottom:0}
@@ -101,20 +133,21 @@ input,select,textarea{font:inherit;color:inherit}
 .daycell.over{background:rgba(15,108,189,.17)}
 .weekgrid{display:grid;grid-template-columns:repeat(7,1fr);position:relative;pointer-events:none}
 .dnum{
-  font-size:12px;color:var(--mut);width:21px;height:21px;line-height:21px;
+  font-size:calc(var(--fs) - 2px);color:var(--mut);
+  width:var(--dnum);height:var(--dnum);line-height:var(--dnum);
   text-align:center;margin:5px 0 0 5px;position:relative;z-index:2
 }
 .lanes{position:relative;padding:0 3px 5px;pointer-events:none}
 .bar{
-  position:absolute;height:22px;line-height:22px;border-radius:5px;
-  font-size:12px;padding:0 7px;white-space:nowrap;overflow:hidden;
+  position:absolute;height:var(--bar-h);line-height:var(--bar-h);border-radius:5px;
+  font-size:var(--bar-fs);padding:0 8px;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;cursor:grab;pointer-events:auto;z-index:3;
   border:1px solid transparent;
 }
 .bar.tbc{background:#fff !important;border-style:dashed;opacity:.75;font-weight:400}
 .bar:active{cursor:grabbing}
 .bar .nd{opacity:.65;font-weight:700;margin-left:3px}
-.emptyrow{height:84px}
+.emptyrow{height:var(--row-min)}
 
 /* ---------- backlog ---------- */
 .backlog{
@@ -126,18 +159,18 @@ input,select,textarea{font:inherit;color:inherit}
   border-bottom:1px solid var(--line);font-size:13px;
 }
 .blhead b{font-size:13px}
-.lanesrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:10px 16px 12px;max-height:188px;overflow:auto}
+.lanesrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:10px 16px 12px;max-height:var(--backlog-h);overflow:auto}
 .lane{background:#fafbfc;border:1px dashed var(--line);border-radius:9px;padding:8px;min-height:62px}
 .lane.over{background:#eef4fb;border-color:var(--accent)}
-.lane h5{margin:0 0 7px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.lane h5{margin:0 0 7px;font-size:calc(var(--fs) - 3px);color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
 .card{
   background:#fff;border:1px dashed #cbd5e1;border-radius:7px;
-  padding:5px 8px;margin-bottom:5px;font-size:12px;cursor:grab;
+  padding:6px 9px;margin-bottom:5px;font-size:var(--bar-fs);cursor:grab;
   display:flex;align-items:center;gap:6px;
 }
 .card:active{cursor:grabbing}
 .card .dot{width:8px;height:8px;border-radius:50%;flex:none}
-.card .mo{color:var(--mut);font-size:11px;margin-left:auto;flex:none}
+.card .mo{color:var(--mut);font-size:calc(var(--fs) - 3px);margin-left:auto;flex:none}
 .collapsed .lanesrow{display:none}
 
 /* ---------- board / list ---------- */
@@ -241,6 +274,13 @@ label.f input,label.f select,label.f textarea{
   <h4 style="margin-top:10px">카테고리</h4>
   <div class="chips" id="catChips"></div>
   <hr/>
+  <h4>화면 크기</h4>
+  <div class="uisize">
+    <button class="btn sm" id="uiDown" title="작게">−</button>
+    <span id="uiLabel">보통</span>
+    <button class="btn sm" id="uiUp" title="크게">+</button>
+  </div>
+  <hr/>
   <div class="row">
     <button class="btn sm" id="blBtn">블랙아웃 관리</button>
     <button class="btn sm" id="icsBtn">Outlook(.ics)</button>
@@ -318,6 +358,24 @@ var fileSha = null, lastCommit = null, saveTimer = null, busyEditing = false, pe
    유틸
    ============================================================ */
 function $(id){ return document.getElementById(id); }
+var UI_SIZES=["ui-sm","","ui-lg","ui-xl"];
+var UI_NAMES=["조밀","보통","크게","아주 크게"];
+var uiSize=1, booted=false;
+function uiPx(name){
+  var v=parseFloat(getComputedStyle(document.body).getPropertyValue(name));
+  return isNaN(v) ? 0 : v;
+}
+function applyUiSize(n, persist){
+  uiSize=Math.min(UI_SIZES.length-1, Math.max(0, n));
+  UI_SIZES.forEach(function(c){ if(c) document.body.classList.remove(c); });
+  if(UI_SIZES[uiSize]) document.body.classList.add(UI_SIZES[uiSize]);
+  var lab=$("uiLabel"); if(lab) lab.textContent=UI_NAMES[uiSize];
+  var dn=$("uiDown"), up=$("uiUp");
+  if(dn) dn.disabled = uiSize<=0;
+  if(up) up.disabled = uiSize>=UI_SIZES.length-1;
+  if(persist){ try{ localStorage.setItem("mci.ui", String(uiSize)); }catch(_){ } }
+  if(booted) render();
+}
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 function pad(n){ return String(n).padStart(2,"0"); }
@@ -486,11 +544,12 @@ function layout(week, evs){
 
 function renderMonth(ym, dens, recs){
   var weeks=weeksOf(ym), evs=events();
+  var LH=uiPx("--lane-h"), TOP=uiPx("--row-top"), MIN=uiPx("--row-min"), PAD=uiPx("--row-pad");
   var h='<div class="monthblock"><h3 class="monthhead">'+monthName(ym)+'</h3><div class="cal">';
   h+='<div class="dow"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div>';
   weeks.forEach(function(w){
     var L=layout(w,evs);
-    var rowH=Math.max(84, 30 + L.laneCount*26 + 6);
+    var rowH=Math.max(MIN, TOP + L.laneCount*LH + PAD);
     h+='<div class="week" style="height:'+rowH+'px">';
     h+='<div class="daycells">';
     w.forEach(function(d){
@@ -513,12 +572,12 @@ function renderMonth(ym, dens, recs){
       h+='<div><div class="dnum">'+Number(d.slice(8,10))+'</div></div>';
     });
     h+='</div>';
-    h+='<div class="lanes" style="height:'+(L.laneCount*26)+'px">';
+    h+='<div class="lanes" style="height:'+(L.laneCount*LH)+'px">';
     L.segs.forEach(function(sg){
       var e=sg.e, t=tagOf(e.tag);
       var left="calc("+(sg.col/7*100)+"% + 3px)";
       var width="calc("+(sg.span/7*100)+"% - 6px)";
-      var top=(sg.lane*26)+"px";
+      var top=(sg.lane*LH)+"px";
       var style="left:"+left+";width:"+width+";top:"+top+";background:"+t.color+";color:"+t.ink+";border-color:"+t.ink+"33";
       var nd=(e.notes&&e.notes.length)?'<span class="nd" title="'+esc(e.notes.join(" · "))+'">·</span>':"";
       var pre=sg.headless?"◂ ":"";
@@ -1189,10 +1248,21 @@ document.addEventListener("click", function(e){
   if(!$("menu").contains(e.target) && e.target!==$("menuBtn")) $("menu").classList.add("hidden");
 });
 $("q").oninput=function(){ filters.q=this.value.trim().toLowerCase(); render(); };
+$("uiDown").onclick=function(){ applyUiSize(uiSize-1, true); };
+$("uiUp").onclick=function(){ applyUiSize(uiSize+1, true); };
 $("blBtn").onclick=function(){ $("menu").classList.add("hidden"); openBlackouts(); };
 $("ghBtn").onclick=function(){ $("menu").classList.add("hidden"); openGh(); };
 $("icsBtn").onclick=function(){ $("menu").classList.add("hidden"); exportIcs(); };
-$("printBtn").onclick=function(){ $("menu").classList.add("hidden"); var pm=mode; mode="quarter"; render(); setTimeout(function(){ window.print(); mode=pm; render(); },120); };
+$("printBtn").onclick=function(){
+  $("menu").classList.add("hidden");
+  var pm=mode; mode="quarter";
+  document.body.classList.add("printing"); render();
+  setTimeout(function(){
+    window.print();
+    document.body.classList.remove("printing");
+    mode=pm; render();
+  },120);
+};
 $("newQBtn").onclick=function(){ $("menu").classList.add("hidden"); createNextQuarter(); };
 $("blToggle").onclick=function(){
   var c=$("backlog").classList.toggle("collapsed");
@@ -1214,9 +1284,16 @@ try{
   var saved=localStorage.getItem("mci.gh");
   if(saved) gh=Object.assign(gh, JSON.parse(saved));
 }catch(_){}
+var savedUi=1;
+try{
+  var su=localStorage.getItem("mci.ui");
+  if(su!==null && su!=="") savedUi=Number(su);
+}catch(_){}
+applyUiSize(savedUi, false);
 qi = Math.max(0, D.quarters.map(function(q){ return q.id; }).indexOf(D.currentQuarter));
 renderChips();
 render();
+booted=true;
 if(connected()){ pull(false); }
 else { setSync("GitHub 미연결 · 일정 없음"); showBanner("일정을 보려면 GitHub 연결이 필요합니다. 오른쪽 위 ⋯ › GitHub 연결 에서 토큰을 한 번만 등록하세요."); }
 setInterval(poll, 30000);
