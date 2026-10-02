@@ -417,6 +417,18 @@ function diffDays(a,b){ return Math.round((parse(b)-parse(a))/86400000); }
 function todayISO(){ return iso(new Date()); }
 function uid(){ return "ev-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7); }
 function Q(){ return D.quarters[qi]; }
+function quarterIndexFor(d){
+  if(!d) return -1;
+  for(var i=0;i<D.quarters.length;i++){
+    var q=D.quarters[i];
+    if(q.periodStart && q.periodEnd && d>=q.periodStart && d<=q.periodEnd) return i;
+  }
+  return -1;
+}
+function gotoQuarter(i){
+  qi=i;
+  monthCursor=0;
+}
 function endOf(e){ return e.end || e.start; }
 function isDay(e){ return e.precision === "day"; }
 var TAG_STYLE={
@@ -1050,10 +1062,36 @@ function openForm(ev){
     }
     e.owner=m.querySelector("#fO").value.trim();
     e.notes=m.querySelector("#fN").value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
+
+    var destIdx=qi;
+    if(e.precision==="day"){
+      destIdx=quarterIndexFor(e.start);
+      if(destIdx<0){
+        alert("선택한 날짜 "+e.start+" 은(는) 등록된 분기에 없습니다.\n\n"
+            + "먼저 ⋯ 메뉴의 ‘다음 분기 만들기’로 해당 분기를 만든 뒤 다시 시도해주세요.\n"
+            + "현재 분기: "+Q().label+" ("+Q().periodStart+" ~ "+Q().periodEnd+")");
+        return;
+      }
+    }
+
     touch(e);
-    if(isNew) Q().events.push(e);
-    m.close(); render(); scheduleSave();
-    toast((isNew?"추가: ":"저장: ")+e.title);
+    var fromIdx=qi, moved=false;
+    if(isNew){
+      D.quarters[destIdx].events.push(e);
+      moved=(destIdx!==qi);
+    } else {
+      var cur=Q().events.indexOf(e);
+      if(destIdx!==qi && cur>=0){
+        Q().events.splice(cur,1);
+        D.quarters[destIdx].events.push(e);
+        moved=true;
+      }
+    }
+    m.close();
+    if(moved) gotoQuarter(destIdx);
+    render(); scheduleSave();
+    if(moved) toast((isNew?"추가: ":"저장: ")+e.title+" — "+D.quarters[destIdx].label+" 로 이동했습니다");
+    else toast((isNew?"추가: ":"저장: ")+e.title);
   };
 }
 
@@ -1196,8 +1234,24 @@ function applyRemote(parsed){
   Object.keys(known).forEach(function(k){ if(!D.tags[k]) D.tags[k]=tagOf(k); });
   if(filters.tags) filters.tags=null;
   if(filters.cats) filters.cats=null;
+
+  var rescued=0;
+  D.quarters.forEach(function(q, i){
+    for(var k=q.events.length-1;k>=0;k--){
+      var e=q.events[k];
+      if(e.precision!=="day") continue;
+      var want=quarterIndexFor(e.start);
+      if(want>=0 && want!==i){
+        q.events.splice(k,1);
+        D.quarters[want].events.push(e);
+        rescued++;
+      }
+    }
+  });
+
   renderChips();
   render();
+  if(rescued) toast(rescued+"건의 일정이 분기와 맞지 않아 올바른 분기로 옮겼습니다. 아무 일정이나 수정하면 저장됩니다.", {kind:"warn"});
 }
 function latestCommit(){
   return api("/repos/"+gh.owner+"/"+gh.repo+"/commits?path="+encodeURIComponent(gh.path)
