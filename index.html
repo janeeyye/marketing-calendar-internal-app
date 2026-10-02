@@ -964,7 +964,11 @@ function modal(html, cls){
   function close(){
     back.remove();
     busyEditing = $("modalRoot").children.length>0;
-    if(!busyEditing && pendingRemote){ pendingRemote=false; pull(true); }
+    setTimeout(function(){
+      if(busyEditing || !pendingRemote) return;
+      if(dirty || saveTimer) return;   // 저장 대기 중이면 덮어쓰지 않는다
+      pendingRemote=false; pull(true);
+    }, 0);
   }
   back.close = close;
   return back;
@@ -1190,22 +1194,31 @@ function setSync(msg, kind){
 }
 
 function pull(loud){
-  if(!connected()){ setSync("GitHub 미연결 · 일정 없음"); return Promise.resolve(); }
-  if(dirty && loud && !confirm("아직 저장되지 않은 변경이 있습니다.\n\n불러오면 그 변경은 사라집니다. 계속할까요?")) return Promise.resolve();
+  if(!connected()){ setSync("GitHub 미연결 · 일정 없음"); return Promise.resolve(false); }
+  var wasDirty = dirty;
+  if(wasDirty && loud && !confirm("아직 저장되지 않은 변경이 있습니다.\n\n불러오면 그 변경은 사라집니다. 계속할까요?")) return Promise.resolve(false);
   setSync("불러오는 중…");
+  var aborted=false;
   return api(contentsUrl()+"?ref="+encodeURIComponent(gh.branch))
     .then(function(res){
+      if(dirty && !wasDirty){
+        aborted=true; pendingRemote=true;
+        setSync("저장 대기 중 — 최신본은 저장 후 반영", "bad");
+        return;
+      }
       fileSha=res.sha;
       var parsed=JSON.parse(b64decode(res.content));
       applyRemote(parsed);
       return latestCommit().then(function(sha){ lastCommit=sha; });
     })
     .then(function(){
+      if(aborted) return false;
       clearTimeout(retryTimer); retryTimer=null; retryN=0;
       setDirty(false);
       setSync("동기화됨 · "+nowHm(), "good");
       if(loud) toast("GitHub에서 불러왔습니다");
       showBanner("");
+      return true;
     })
     .catch(function(err){
       if(err.status===404){
@@ -1283,6 +1296,7 @@ function push(){
     .then(function(res){
       fileSha=res.content.sha;
       lastCommit=res.commit.sha;
+      pendingRemote=false;
       clearTimeout(retryTimer); retryTimer=null; retryN=0;
       setDirty(false);
       setSync("저장됨 · "+nowHm(), "good");
@@ -1334,8 +1348,7 @@ function poll(){
   latestCommit().then(function(sha){
     if(!sha || sha===lastCommit) return;
     if(busyEditing || drag || dirty){ pendingRemote=true; return; }
-    lastCommit=sha;
-    pull(false).then(function(){ toast("다른 팀원의 변경을 반영했습니다"); });
+    pull(false).then(function(ok){ if(ok) toast("다른 팀원의 변경을 반영했습니다"); });
   });
 }
 function nowHm(){ var d=new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
