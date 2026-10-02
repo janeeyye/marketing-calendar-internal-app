@@ -1103,7 +1103,7 @@ function createNextQuarter(){
   }
   always.forEach(function(e){
     var c=JSON.parse(JSON.stringify(e));
-    c.id=uid(); c.start=nq.months[0]+"-01"; c.end=c.start;
+    c.id=uid(); c.start=nq.periodStart; c.end=nq.periodEnd;
     nq.events.push(c);
   });
   if(carry){
