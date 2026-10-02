@@ -20,23 +20,24 @@
   --fs:15px;
   --maxw:1440px;
   --backlog-h:200px;
+  --hol-h:15px;
 }
 body.ui-sm{
   --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
-  --row-min:84px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px;
+  --row-min:84px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px; --hol-h:14px;
 }
 body.ui-lg{
   --lane-h:36px; --bar-h:31px; --bar-fs:14.5px; --row-top:38px;
-  --row-min:120px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px;
+  --row-min:120px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px; --hol-h:17px;
 }
 body.ui-xl{
   --lane-h:43px; --bar-h:37px; --bar-fs:16.5px; --row-top:44px;
-  --row-min:146px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px;
+  --row-min:146px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px; --hol-h:19px;
 }
 /* 인쇄 직전에만 붙는다. 화면 크기 설정과 무관하게 출력을 일정하게 만든다. */
 body.printing,body.printing.ui-sm,body.printing.ui-lg,body.printing.ui-xl{
   --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
-  --row-min:84px; --dnum:21px; --fs:14px; --maxw:none;
+  --row-min:84px; --dnum:21px; --fs:14px; --maxw:none; --hol-h:14px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -122,6 +123,7 @@ input,select,textarea{font:inherit;color:inherit}
 .daycell:last-child{border-right:0}
 .daycell.off{background:#fcfcfd}
 .daycell.we{background:#fdfdfe}
+.daycell.hol{background:#fff6f6}
 .daycell.today .dnum{background:var(--accent);color:#fff;border-radius:50%}
 .daycell.blackout::after{
   content:"";position:absolute;inset:0;pointer-events:none;
@@ -136,6 +138,12 @@ input,select,textarea{font:inherit;color:inherit}
   font-size:calc(var(--fs) - 2px);color:var(--mut);
   width:var(--dnum);height:var(--dnum);line-height:var(--dnum);
   text-align:center;margin:5px 0 0 5px;position:relative;z-index:2
+}
+.dnum.red{color:#c2334d;font-weight:700}
+.holname{
+  font-size:calc(var(--fs) - 4px);color:#c2334d;line-height:var(--hol-h);height:var(--hol-h);
+  margin:0 4px 0 5px;position:relative;z-index:2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .lanes{position:relative;padding:0 3px 5px;pointer-events:none}
 .bar{
@@ -392,6 +400,81 @@ function tagOf(t){ return D.tags[t] || { color:"#e5e7eb", ink:"#374151" }; }
 function weekKey(s){ var d=parse(s); d.setDate(d.getDate()-d.getDay()); return iso(d); }
 function monthName(ym){ var a=ym.split("-"); return a[0]+"년 "+Number(a[1])+"월"; }
 
+/* 한국 공휴일 (2026-2028). 팀 데이터가 아니라 앜에 고정된 참조 값이다.
+   노동절은 법정공휴일이지만 대체공휴일 제도 대상은 아니므로 대체는 넣지 않았다. */
+var HOLIDAYS={
+  "2026-01-01":"신정",
+  "2026-02-16":"설 연휴",
+  "2026-02-17":"설날",
+  "2026-02-18":"설 연휴",
+  "2026-03-01":"삼일절",
+  "2026-03-02":"삼일절 대체",
+  "2026-05-01":"노동절",
+  "2026-05-05":"어린이날",
+  "2026-05-24":"부처님오신날",
+  "2026-05-25":"부처님오신날 대체",
+  "2026-06-03":"지방선거",
+  "2026-06-06":"현충일",
+  "2026-07-17":"제헌절",
+  "2026-08-15":"광복절",
+  "2026-08-17":"광복절 대체",
+  "2026-09-24":"추석 연휴",
+  "2026-09-25":"추석",
+  "2026-09-26":"추석 연휴",
+  "2026-10-03":"개천절",
+  "2026-10-05":"개천절 대체",
+  "2026-10-09":"한글날",
+  "2026-12-25":"성탄절",
+  "2027-01-01":"신정",
+  "2027-02-06":"설 연휴",
+  "2027-02-07":"설날",
+  "2027-02-08":"설 연휴",
+  "2027-02-09":"설날 대체",
+  "2027-03-01":"삼일절",
+  "2027-05-01":"노동절",
+  "2027-05-05":"어린이날",
+  "2027-05-13":"부처님오신날",
+  "2027-06-06":"현충일",
+  "2027-07-17":"제헌절",
+  "2027-07-19":"제헌절 대체",
+  "2027-08-15":"광복절",
+  "2027-08-16":"광복절 대체",
+  "2027-09-14":"추석 연휴",
+  "2027-09-15":"추석",
+  "2027-09-16":"추석 연휴",
+  "2027-10-03":"개천절",
+  "2027-10-04":"개천절 대체",
+  "2027-10-09":"한글날",
+  "2027-10-11":"한글날 대체",
+  "2027-12-25":"성탄절",
+  "2027-12-27":"성탄절 대체",
+  "2028-01-01":"신정",
+  "2028-01-26":"설 연휴",
+  "2028-01-27":"설날",
+  "2028-01-28":"설 연휴",
+  "2028-03-01":"삼일절",
+  "2028-04-12":"총선",
+  "2028-05-01":"노동절",
+  "2028-05-02":"부처님오신날",
+  "2028-05-05":"어린이날",
+  "2028-06-06":"현충일",
+  "2028-07-17":"제헌절",
+  "2028-08-15":"광복절",
+  "2028-10-02":"추석 연휴",
+  "2028-10-03":"개천절",
+  "2028-10-04":"추석 연휴",
+  "2028-10-05":"추석 대체",
+  "2028-10-09":"한글날",
+  "2028-12-25":"성탄절"
+};
+function isHoliday(d){ return !!HOLIDAYS[d]; }
+function holidayName(d){ return HOLIDAYS[d] || ""; }
+/** start 부터 span일까지의 날짜 목록 */
+function spanDays(start, span){
+  var out=[]; for(var i=0;i<=span;i++) out.push(addDays(start,i));
+  return out;
+}
+
 function visible(e){
   if(filters.tags && !filters.tags.has(e.tag)) return false;
   if(filters.cats && !filters.cats.has(e.category)) return false;
@@ -465,9 +548,12 @@ function densityByWeek(){
 /** 해당 날짜에 놓았을 때의 경고 목록 */
 function conflicts(ev, start, span){
   var out = [];
-  var endd = addDays(start, span);
-  if(inBlackout(start) || inBlackout(endd)){
-    out.push("블랙아웃 구간: " + (blackoutName(start)||blackoutName(endd)));
+  var days = spanDays(start, span);
+  var bo = days.filter(inBlackout)[0];
+  if(bo) out.push("블랙아웃 구간: " + blackoutName(bo));
+  var hol = days.filter(isHoliday);
+  if(hol.length){
+    out.push("공휴일: " + holidayName(hol[0]) + (hol.length>1 ? " 외 "+(hol.length-1)+"일" : ""));
   }
   var wk = weekKey(start);
   var sameTag = Q().events.filter(function(x){
@@ -544,12 +630,14 @@ function layout(week, evs){
 
 function renderMonth(ym, dens, recs){
   var weeks=weeksOf(ym), evs=events();
-  var LH=uiPx("--lane-h"), TOP=uiPx("--row-top"), MIN=uiPx("--row-min"), PAD=uiPx("--row-pad");
+  var LH=uiPx("--lane-h"), TOP=uiPx("--row-top"), MIN=uiPx("--row-min"),
+      PAD=uiPx("--row-pad"), HOL=uiPx("--hol-h");
   var h='<div class="monthblock"><h3 class="monthhead">'+monthName(ym)+'</h3><div class="cal">';
   h+='<div class="dow"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div>';
   weeks.forEach(function(w){
     var L=layout(w,evs);
-    var rowH=Math.max(MIN, TOP + L.laneCount*LH + PAD);
+    var top = TOP + (w.some(isHoliday) ? HOL : 0);
+    var rowH=Math.max(MIN, top + L.laneCount*LH + PAD);
     h+='<div class="week" style="height:'+rowH+'px">';
     h+='<div class="daycells">';
     w.forEach(function(d){
@@ -557,6 +645,8 @@ function renderMonth(ym, dens, recs){
       if(d.slice(0,7)!==ym) cls+=" off";
       var wd=parse(d).getDay();
       if(wd===0||wd===6) cls+=" we";
+      var hn=holidayName(d);
+      if(hn) cls+=" hol";
       if(d===todayISO()) cls+=" today";
       if(drag){
         if(inBlackout(d)) cls+=" blackout";
@@ -569,7 +659,12 @@ function renderMonth(ym, dens, recs){
     h+='</div>';
     h+='<div class="weekgrid">';
     w.forEach(function(d){
-      h+='<div><div class="dnum">'+Number(d.slice(8,10))+'</div></div>';
+      var hn=holidayName(d);
+      var wd=parse(d).getDay();
+      var red=(hn || wd===0);
+      h+='<div><div class="dnum'+(red?" red":"")+'">'+Number(d.slice(8,10))+'</div>'
+       + (hn?'<div class="holname">'+esc(hn)+'</div>':'')
+       + '</div>';
     });
     h+='</div>';
     h+='<div class="lanes" style="height:'+(L.laneCount*LH)+'px">';
