@@ -10,11 +10,12 @@
   --accent:#0f6cbd; --warn:#b45309; --danger:#b91c1c; --ok:#15803d;
 
   /* 화면 크기 — body.ui-* 로 전환. JS가 같은 값을 읽어 행 높이를 계산한다. */
-  --lane-h:30px;    /* 막대 한 줄이 차지하는 높이 */
-  --bar-h:26px;     /* 막대 자체 높이 */
+  --lane-h:44px;    /* 막대 한 줄이 차지하는 높이 */
+  --bar-h:39px;     /* 막대 자체 높이 (제목 두 줄) */
   --bar-fs:13px;
   --row-top:34px;   /* 날짜 숫자 영역 */
-  --row-min:98px;   /* 일정 없는 주의 최소 높이 */
+  --row-min:124px;  /* 일정 없는 주의 최소 높이 */
+  --we-w:.62;       /* 주말 칸 너비 (평일 대비 비율) */
   --row-pad:6px;
   --dnum:24px;
   --fs:15px;
@@ -23,21 +24,22 @@
   --hol-h:15px;
 }
 body.ui-sm{
-  --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
-  --row-min:84px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px; --hol-h:14px;
+  --lane-h:38px; --bar-h:33px; --bar-fs:12px; --row-top:30px;
+  --row-min:106px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px; --hol-h:14px;
 }
 body.ui-lg{
-  --lane-h:36px; --bar-h:31px; --bar-fs:14.5px; --row-top:38px;
-  --row-min:120px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px; --hol-h:17px;
+  --lane-h:52px; --bar-h:46px; --bar-fs:14.5px; --row-top:38px;
+  --row-min:148px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px; --hol-h:17px;
 }
 body.ui-xl{
-  --lane-h:43px; --bar-h:37px; --bar-fs:16.5px; --row-top:44px;
-  --row-min:146px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px; --hol-h:19px;
+  --lane-h:62px; --bar-h:55px; --bar-fs:16.5px; --row-top:44px;
+  --row-min:178px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px; --hol-h:19px;
 }
 /* 인쇄 직전에만 붙는다. 화면 크기 설정과 무관하게 출력을 일정하게 만든다. */
 body.printing,body.printing.ui-sm,body.printing.ui-lg,body.printing.ui-xl{
   --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
   --row-min:84px; --dnum:21px; --fs:14px; --maxw:none; --hol-h:14px;
+  --bar-lines:1;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -113,12 +115,14 @@ input,select,textarea{font:inherit;color:inherit}
 .monthblock{margin-bottom:22px}
 .monthhead{font-weight:700;font-size:calc(var(--fs) + 1px);margin:0 0 8px;padding-left:2px}
 .cal{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.dow{display:grid;grid-template-columns:repeat(7,1fr);background:#fafbfc;border-bottom:1px solid var(--line)}
+.dow{display:grid;grid-template-columns:var(--cols);background:#fafbfc;border-bottom:1px solid var(--line)}
+:root{ --cols:.62fr repeat(5,1fr) .62fr; }
+body.printing{ --cols:1fr repeat(5,1fr) 1fr; --we-w:1; }
 .dow div{padding:7px 0;text-align:center;font-size:calc(var(--fs) - 2px);color:var(--mut);font-weight:600}
 .dow div:first-child,.dow div:last-child{color:#9aa3af}
 .week{position:relative;border-bottom:1px solid var(--line)}
 .week:last-child{border-bottom:0}
-.daycells{display:grid;grid-template-columns:repeat(7,1fr);height:100%;position:absolute;inset:0}
+.daycells{display:grid;grid-template-columns:var(--cols);height:100%;position:absolute;inset:0}
 .daycell{border-right:1px solid var(--line);position:relative}
 .daycell:last-child{border-right:0}
 .daycell.off{background:#fcfcfd}
@@ -133,7 +137,7 @@ input,select,textarea{font:inherit;color:inherit}
 .daycell.dense2{background:rgba(15,108,189,.14)}
 .daycell.rec{box-shadow:inset 0 0 0 2px #15803d}
 .daycell.over{background:rgba(15,108,189,.17)}
-.weekgrid{display:grid;grid-template-columns:repeat(7,1fr);position:relative;pointer-events:none}
+.weekgrid{display:grid;grid-template-columns:var(--cols);position:relative;pointer-events:none}
 .dnum{
   font-size:calc(var(--fs) - 2px);color:var(--mut);
   width:var(--dnum);height:var(--dnum);line-height:var(--dnum);
@@ -147,14 +151,22 @@ input,select,textarea{font:inherit;color:inherit}
 }
 .lanes{position:relative;padding:0 3px 5px;pointer-events:none}
 .bar{
-  position:absolute;height:var(--bar-h);line-height:var(--bar-h);border-radius:5px;
-  font-size:var(--bar-fs);padding:0 8px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;cursor:grab;pointer-events:auto;z-index:3;
+  position:absolute;height:var(--bar-h);border-radius:5px;
+  font-size:var(--bar-fs);padding:3px 7px;overflow:hidden;
+  cursor:grab;pointer-events:auto;z-index:3;
   border:1px solid transparent;
+  display:flex;align-items:center;gap:0;
 }
+.bar .bt{
+  display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:var(--bar-lines,2);line-clamp:var(--bar-lines,2);
+  overflow:hidden;line-height:1.3;word-break:break-word;min-width:0;
+}
+body.printing .bar{align-items:center}
+body.printing .bar .bt{white-space:nowrap;text-overflow:ellipsis;display:block}
 .bar.tbc{background:#fff !important;border-style:dashed;opacity:.75;font-weight:400}
 .cb{
-  display:inline-block;margin-right:5px;padding:0 4px;
+  display:inline-block;flex:none;align-self:center;margin-right:5px;padding:0 4px;
   font-size:calc(var(--bar-fs) - 3px);font-weight:700;
   letter-spacing:.03em;border-radius:3px;
   border:1px solid currentColor;background:transparent;
@@ -692,6 +704,15 @@ function layout(week, evs){
   return { segs:segs, laneCount:lanes.length };
 }
 
+/** 열 경계(0~7)의 가로 위치를 % 로. 주말 폭이 평일과 다르므로 누적 계산한다. */
+function colPct(col){
+  var w = parseFloat(getComputedStyle(document.body).getPropertyValue("--we-w")) || 1;
+  var total = 5 + 2*w;
+  var acc = 0;
+  for(var i=0;i<col && i<7;i++) acc += (i===0||i===6) ? w : 1;
+  return acc/total*100;
+}
+
 function renderMonth(ym, dens, recs){
   var weeks=weeksOf(ym), evs=events();
   var LH=uiPx("--lane-h"), TOP=uiPx("--row-top"), MIN=uiPx("--row-min"),
@@ -734,15 +755,17 @@ function renderMonth(ym, dens, recs){
     h+='<div class="lanes" style="height:'+(L.laneCount*LH)+'px">';
     L.segs.forEach(function(sg){
       var e=sg.e, t=tagOf(e.tag);
-      var left="calc("+(sg.col/7*100)+"% + 3px)";
-      var width="calc("+(sg.span/7*100)+"% - 6px)";
+      var left="calc("+colPct(sg.col)+"% + 3px)";
+      var width="calc("+(colPct(sg.col+sg.span)-colPct(sg.col))+"% - 6px)";
       var top=(sg.lane*LH)+"px";
       var style="left:"+left+";width:"+width+";top:"+top+";background:"+t.color+";color:"+t.ink+";border-color:"+t.line;
       var nd=(e.notes&&e.notes.length)?'<span class="nd" title="'+esc(e.notes.join(" · "))+'">·</span>':"";
       var pre=sg.headless?"◂ ":"";
       var tip=e.title+"  \u2014  "+(TAG_FULL[e.tag]||e.tag)+"  \u00b7  "+e.category;
       h+='<div class="bar" draggable="true" data-id="'+e.id+'" style="'+style+'" title="'+esc(tip)+'">'
-         + (sg.headless?"":catBadge(e)) + pre + esc(e.title) + nd + '</div>';
+         + (sg.headless?"":catBadge(e))
+         + '<span class="bt">' + pre + esc(e.title) + nd + '</span>'
+         + '</div>';
     });
     h+='</div></div>';
   });
@@ -758,10 +781,12 @@ function fitBadges(){
     if(cb){ cb.style.display=""; keep.push(bars[i]); }
   }
   var m=keep.map(function(b){
-    return { cb:b.querySelector(".cb"), w:b.clientWidth, bw:b.querySelector(".cb").offsetWidth };
+    var t=b.querySelector(".bt");
+    return { cb:b.querySelector(".cb"), bt:t, w:b.clientWidth, bw:b.querySelector(".cb").offsetWidth,
+             over: t ? (t.scrollHeight > t.clientHeight+1) : false };
   });
   m.forEach(function(x){
-    if(x.w - x.bw < 52) x.cb.style.display="none";
+    if(x.over || x.w - x.bw < 52) x.cb.style.display="none";
   });
 }
 
