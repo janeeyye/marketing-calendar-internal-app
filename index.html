@@ -375,6 +375,7 @@ var drag = null;                  // {id, days, from}
 var undoStack = [];
 var gh = { pat:"", owner:"janeeyye", repo:"marketing-calendar-internal", path:"calendar-data.json", branch:"main" };
 var fileSha = null, lastCommit = null, saveTimer = null, busyEditing = false, pendingRemote = false;
+var baseSnap = null, mergeRound = 0;   // baseSnap = 마지막으로 서버와 일치했던 내용(병합 기준점)
 var dirty = false, retryTimer = null, retryN = 0;
 var RETRY_WAIT = [5000, 15000, 40000, 90000];
 var showCat = true;
@@ -1207,7 +1208,9 @@ function pull(loud){
         return;
       }
       fileSha=res.sha;
-      var parsed=JSON.parse(b64decode(res.content));
+      var txt=b64decode(res.content);
+      baseSnap=txt;
+      var parsed=JSON.parse(txt);
       applyRemote(parsed);
       return latestCommit().then(function(sha){ lastCommit=sha; });
     })
@@ -1296,6 +1299,8 @@ function push(){
     .then(function(res){
       fileSha=res.content.sha;
       lastCommit=res.commit.sha;
+      baseSnap=payload;
+      mergeRound=0;
       pendingRemote=false;
       clearTimeout(retryTimer); retryTimer=null; retryN=0;
       setDirty(false);
@@ -1322,26 +1327,154 @@ function serialize(){
   D.currentQuarter = Q().id;
   return D;
 }
+/* ============================================================
+   3-way 병합 — 기준점(baseSnap) 대비 내 변경과 팀원 변경을 모두 살린다
+   ============================================================ */
+function sameJ(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
+function byKey(arr, keyFn){ var m={}; (arr||[]).forEach(function(x){ m[keyFn(x)]=x; }); return m; }
+function newStats(preferMine){ return {fromMe:0, fromThem:0, removed:0, kept:0, bothEdited:[], preferMine:!!preferMine}; }
+
+function merge3(baseArr, mineArr, theirsArr, keyFn, st){
+  var B=byKey(baseArr,keyFn), M=byKey(mineArr,keyFn), T=byKey(theirsArr,keyFn);
+  var order=[], seen={};
+  (theirsArr||[]).forEach(function(x){ var k=keyFn(x); if(!seen[k]){seen[k]=1; order.push(k);} });
+  (mineArr||[]).forEach(function(x){ var k=keyFn(x); if(!seen[k]){seen[k]=1; order.push(k);} });
+  var out=[];
+  order.forEach(function(k){
+    var b=B[k], m=M[k], t=T[k];
+    if(m && t){
+      if(sameJ(m,t)){ out.push(t); return; }
+      if(b && sameJ(b,m)){ out.push(t); st.fromThem++; return; }   // 팀원만 고침
+      if(b && sameJ(b,t)){ out.push(m); st.fromMe++; return; }     // 나만 고침
+      var mine_newer = st.preferMine || (m.updatedAt||"") >= (t.updatedAt||"");
+      st.bothEdited.push({ title:(m.title||t.title||k), winner: mine_newer?"mine":"theirs" });
+      if(mine_newer){ out.push(m); st.fromMe++; } else { out.push(t); st.fromThem++; }
+      return;
+    }
+    if(m && !t){
+      if(!b){ out.push(m); st.fromMe++; return; }                  // 내가 추가
+      if(sameJ(b,m)){ st.removed++; return; }                      // 팀원이 지움, 나는 안 건드림
+      out.push(m); st.kept++; return;                              // 내가 고친 건 살린다
+    }
+    if(t && !m){
+      if(!b){ out.push(t); st.fromThem++; return; }                // 팀원이 추가
+      if(sameJ(b,t)){ st.removed++; return; }                      // 내가 지움, 팀원은 안 건드림
+      out.push(t); st.kept++; return;
+    }
+  });
+  return out;
+}
+
+function pick3(bv, mv, tv){ return sameJ(bv, mv) ? tv : mv; }
+
+function mergeObj(b, m, t){
+  b=b||{}; m=m||{}; t=t||{};
+  var out={}, keys={};
+  Object.keys(t).forEach(function(k){ keys[k]=1; });
+  Object.keys(m).forEach(function(k){ keys[k]=1; });
+  Object.keys(keys).forEach(function(k){
+    var bv=b[k], mv=m[k], tv=t[k];
+    if(mv!==undefined && tv!==undefined){ out[k]=pick3(bv,mv,tv); return; }
+    if(mv!==undefined){ if(bv===undefined || !sameJ(bv,mv)) out[k]=mv; return; }
+    if(tv!==undefined){ if(bv===undefined || !sameJ(bv,tv)) out[k]=tv; }
+  });
+  return out;
+}
+
+function bkKey(x){ return x.label+"|"+x.start+"|"+x.end; }
+function idKey(x){ return x.id; }
+function selfKey(x){ return x; }
+
+function mergeData(base, mine, theirs, st){
+  var out = {
+    currentQuarter: mine.currentQuarter || theirs.currentQuarter,
+    tags: mergeObj(base.tags, mine.tags, theirs.tags),
+    categories: merge3(base.categories, mine.categories, theirs.categories, selfKey, newStats()),
+    quarters: []
+  };
+  var Bq=byKey(base.quarters, idKey), Mq=byKey(mine.quarters, idKey), Tq=byKey(theirs.quarters, idKey);
+  var order=[], seen={};
+  (theirs.quarters||[]).forEach(function(q){ if(!seen[q.id]){ seen[q.id]=1; order.push(q.id); } });
+  (mine.quarters||[]).forEach(function(q){ if(!seen[q.id]){ seen[q.id]=1; order.push(q.id); } });
+  order.forEach(function(id){
+    var b=Bq[id]||null, m=Mq[id]||null, t=Tq[id]||null;
+    if(!m && !t) return;
+    if(!m){ out.quarters.push(t); st.fromThem++; return; }
+    if(!t){ out.quarters.push(m); st.fromMe++; return; }
+    out.quarters.push({
+      id: id,
+      label:       pick3(b&&b.label,       m.label,       t.label),
+      periodStart: pick3(b&&b.periodStart, m.periodStart, t.periodStart),
+      periodEnd:   pick3(b&&b.periodEnd,   m.periodEnd,   t.periodEnd),
+      months:      pick3(b&&b.months,      m.months,      t.months),
+      source:      pick3(b&&b.source,      m.source,      t.source),
+      blackouts:   merge3(b&&b.blackouts, m.blackouts, t.blackouts, bkKey, st),
+      events:      merge3(b&&b.events,    m.events,    t.events,    idKey, st)
+    });
+  });
+  return out;
+}
+
 function conflictFlow(){
-  setSync("충돌 — 확인 필요", "bad");
+  setSync("충돌 — 병합 중…", "bad");
   var mine = JSON.parse(JSON.stringify(D));
   api(contentsUrl()+"?ref="+encodeURIComponent(gh.branch)).then(function(res){
     var theirs = JSON.parse(b64decode(res.content));
     fileSha = res.sha;
-    var h='<div class="mtop"><h3>다른 사람이 먼저 수정했습니다</h3></div><div class="mbody">'
-      + '<p style="margin:0 0 10px;font-size:13.5px">그 사이 다른 팀원이 저장했습니다. 어떻게 할까요?</p>'
-      + '<ul style="margin:0 0 4px 18px;padding:0;font-size:13px;color:#6b7280">'
-      + '<li><b>내 변경 다시 적용</b> — 최신본 위에 내 내용을 덮어씁니다</li>'
-      + '<li><b>최신본 받기</b> — 내 변경을 버리고 다른 사람 내용을 가져옵니다</li>'
-      + '</ul></div>'
-      + '<div class="mfoot"><button class="btn" id="cTheirs">최신본 받기</button>'
-      + '<button class="btn pri" id="cMine">내 변경 다시 적용</button></div>';
-    var m=modal(h);
-    m.querySelector("#cTheirs").onclick=function(){ m.close(); applyRemote(theirs); setDirty(false); setSync("최신본 적용됨 · "+nowHm(), "good"); };
-    m.querySelector("#cMine").onclick=function(){ m.close(); D=mine; render(); push(); };
+
+    if(!baseSnap || mergeRound>=3){ manualConflict(mine, theirs); return; }
+    var base = JSON.parse(baseSnap);
+    mergeRound++;
+
+    function run(preferMine){
+      var st=newStats(preferMine);
+      return { merged: mergeData(base, mine, theirs, st), st: st };
+    }
+    function apply(r){
+      D=r.merged; render(); setDirty(true);
+      var p=push(); if(p && p.then) p.then(function(){});
+    }
+
+    var r=run(false);
+    apply(r);
+
+    var n=r.st.bothEdited.length;
+    toast("팀원의 변경과 자동으로 합쳤습니다 — 내 변경 "+r.st.fromMe+"건, 팀원 변경 "+r.st.fromThem+"건"
+          + (n? (" · 겹친 "+n+"건") : ""), {kind: n?"warn":"good"});
+    if(!n) return;
+
+    var rows=r.st.bothEdited.map(function(x){
+      return '<li>'+esc(x.title)+' — <b>'+(x.winner==="mine"?"내 버전":"팀원 버전")+'</b> 적용</li>';
+    }).join("");
+    var h='<div class="mtop"><h3>같은 일정을 양쪽이 수정했습니다</h3></div><div class="mbody">'
+      + '<p style="margin:0 0 10px;font-size:13.5px">나머지는 모두 합쳤습니다. 아래 '+n+'건만 더 늦게 수정한 쪽을 택했습니다.</p>'
+      + '<ul style="margin:0 0 4px 18px;padding:0;font-size:13px">'+rows+'</ul></div>'
+      + '<div class="mfoot"><button class="btn" id="cKeep">그대로 두기</button>'
+      + '<button class="btn pri" id="cMinePref">내 버전 우선</button></div>';
+    var m2=modal(h);
+    m2.querySelector("#cKeep").onclick=function(){ m2.close(); };
+    m2.querySelector("#cMinePref").onclick=function(){
+      m2.close(); apply(run(true));
+      toast("겹친 "+n+"건을 내 버전으로 바꿨습니다");
+    };
   }).catch(function(err){
+    setSync("충돌 처리 실패", "bad");
     toast("충돌 처리 실패: "+err.message, {kind:"err"});
   });
+}
+
+function manualConflict(mine, theirs){
+  var h='<div class="mtop"><h3>다른 사람이 먼저 수정했습니다</h3></div><div class="mbody">'
+    + '<p style="margin:0 0 10px;font-size:13.5px">자동으로 합칠 기준을 찾지 못했습니다. 어떻게 할까요?</p>'
+    + '<ul style="margin:0 0 4px 18px;padding:0;font-size:13px;color:#6b7280">'
+    + '<li><b>내 변경 다시 적용</b> — 최신본 위에 내 내용을 덮어씁니다</li>'
+    + '<li><b>최신본 받기</b> — 내 변경을 버리고 다른 사람 내용을 가져옵니다</li>'
+    + '</ul></div>'
+    + '<div class="mfoot"><button class="btn" id="cTheirs">최신본 받기</button>'
+    + '<button class="btn pri" id="cMine">내 변경 다시 적용</button></div>';
+  var m=modal(h);
+  m.querySelector("#cTheirs").onclick=function(){ m.close(); applyRemote(theirs); setDirty(false); setSync("최신본 적용됨 · "+nowHm(), "good"); };
+  m.querySelector("#cMine").onclick=function(){ m.close(); D=mine; render(); push(); };
 }
 function poll(){
   if(!connected() || saveTimer || dirty) return;
