@@ -10,11 +10,11 @@
   --accent:#0f6cbd; --warn:#b45309; --danger:#b91c1c; --ok:#15803d;
 
   /* 화면 크기 — body.ui-* 로 전환. JS가 같은 값을 읽어 행 높이를 계산한다. */
-  --lane-h:64px;    /* 막대 한 줄이 차지하는 높이 */
-  --bar-h:59px;     /* 막대 자체 높이 (제목 세 줄) */
+  --bar-min-h:25px; /* 한 줄 제목 막대 높이 */
+  --bar-h:59px;     /* 세 줄 제목 막대 최대 높이 */
+  --lane-gap:5px;
   --bar-fs:13px;
-  --row-top:34px;   /* 날짜 숫자 영역 */
-  --row-min:168px;  /* 일정 없는 주의 최소 높이 */
+  --row-min:124px;  /* 일정 없는 주의 최소 높이 */
   --we-w:.62;       /* 주말 칸 너비 (평일 대비 비율) */
   --row-pad:6px;
   --dnum:24px;
@@ -24,20 +24,20 @@
   --hol-h:15px;
 }
 body.ui-sm{
-  --lane-h:60px; --bar-h:55px; --bar-fs:12px; --row-top:30px;
-  --row-min:156px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px; --hol-h:14px;
+  --bar-min-h:24px; --bar-h:55px; --bar-fs:12px;
+  --row-min:106px; --dnum:21px; --fs:14px; --maxw:1240px; --backlog-h:188px; --hol-h:14px;
 }
 body.ui-lg{
-  --lane-h:71px; --bar-h:66px; --bar-fs:14.5px; --row-top:38px;
-  --row-min:186px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px; --hol-h:17px;
+  --bar-min-h:28px; --bar-h:66px; --bar-fs:14.5px;
+  --row-min:148px; --dnum:27px; --fs:16.5px; --maxw:1720px; --backlog-h:228px; --hol-h:17px;
 }
 body.ui-xl{
-  --lane-h:79px; --bar-h:74px; --bar-fs:16.5px; --row-top:44px;
-  --row-min:208px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px; --hol-h:19px;
+  --bar-min-h:30px; --bar-h:74px; --bar-fs:16.5px;
+  --row-min:178px; --dnum:31px; --fs:18px; --maxw:2040px; --backlog-h:264px; --hol-h:19px;
 }
 /* 인쇄 직전에만 붙는다. 화면 크기 설정과 무관하게 출력을 일정하게 만든다. */
 body.printing,body.printing.ui-sm,body.printing.ui-lg,body.printing.ui-xl{
-  --lane-h:26px; --bar-h:22px; --bar-fs:12px; --row-top:30px;
+  --bar-min-h:22px; --bar-h:22px; --bar-fs:12px;
   --row-min:84px; --dnum:21px; --fs:14px; --maxw:none; --hol-h:14px;
   --bar-lines:1;
 }
@@ -151,7 +151,7 @@ body.printing{ --cols:1fr repeat(5,1fr) 1fr; --we-w:1; }
 }
 .lanes{position:relative;padding:0 3px 5px;pointer-events:none}
 .bar{
-  position:absolute;height:var(--bar-h);border-radius:5px;
+  position:absolute;height:auto;min-height:var(--bar-min-h);max-height:var(--bar-h);border-radius:5px;
   font-size:var(--bar-fs);padding:3px 7px;overflow:hidden;
   cursor:grab;pointer-events:auto;z-index:3;
   border:1px solid transparent;
@@ -715,15 +715,12 @@ function colPct(col){
 
 function renderMonth(ym, dens, recs){
   var weeks=weeksOf(ym), evs=events();
-  var LH=uiPx("--lane-h"), TOP=uiPx("--row-top"), MIN=uiPx("--row-min"),
-      PAD=uiPx("--row-pad"), HOL=uiPx("--hol-h");
+  var MIN=uiPx("--row-min");
   var h='<div class="monthblock"><h3 class="monthhead">'+monthName(ym)+'</h3><div class="cal">';
   h+='<div class="dow"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div>';
   weeks.forEach(function(w){
     var L=layout(w,evs);
-    var top = TOP + (w.some(isHoliday) ? HOL : 0);
-    var rowH=Math.max(MIN, top + L.laneCount*LH + PAD);
-    h+='<div class="week" style="height:'+rowH+'px">';
+    h+='<div class="week" style="height:'+MIN+'px">';
     h+='<div class="daycells">';
     w.forEach(function(d){
       var cls="daycell";
@@ -752,17 +749,16 @@ function renderMonth(ym, dens, recs){
        + '</div>';
     });
     h+='</div>';
-    h+='<div class="lanes" style="height:'+(L.laneCount*LH)+'px">';
+    h+='<div class="lanes">';
     L.segs.forEach(function(sg){
       var e=sg.e, t=tagOf(e.tag);
       var left="calc("+colPct(sg.col)+"% + 3px)";
       var width="calc("+(colPct(sg.col+sg.span)-colPct(sg.col))+"% - 6px)";
-      var top=(sg.lane*LH)+"px";
-      var style="left:"+left+";width:"+width+";top:"+top+";background:"+t.color+";color:"+t.ink+";border-color:"+t.line;
+      var style="left:"+left+";width:"+width+";top:0;background:"+t.color+";color:"+t.ink+";border-color:"+t.line;
       var nd=(e.notes&&e.notes.length)?'<span class="nd" title="'+esc(e.notes.join(" · "))+'">·</span>':"";
       var pre=sg.headless?"◂ ":"";
       var tip=e.title+"  \u2014  "+(TAG_FULL[e.tag]||e.tag)+"  \u00b7  "+e.category;
-      h+='<div class="bar" draggable="true" data-id="'+e.id+'" style="'+style+'" title="'+esc(tip)+'">'
+      h+='<div class="bar" draggable="true" data-id="'+e.id+'" data-lane="'+sg.lane+'" style="'+style+'" title="'+esc(tip)+'">'
          + (sg.headless?"":catBadge(e))
          + '<span class="bt">' + pre + esc(e.title) + nd + '</span>'
          + '</div>';
@@ -771,6 +767,28 @@ function renderMonth(ym, dens, recs){
   });
   h+='</div></div>';
   return h;
+}
+
+function fitCalendarRows(){
+  var MIN=uiPx("--row-min"), PAD=uiPx("--row-pad"), GAP=uiPx("--lane-gap");
+  Array.prototype.forEach.call(document.querySelectorAll("#viewCal .week"), function(week){
+    var lanes=week.querySelector(".lanes");
+    var bars=Array.prototype.slice.call(lanes.querySelectorAll(".bar"));
+    var heights=[];
+    bars.forEach(function(bar){
+      var lane=Number(bar.dataset.lane);
+      heights[lane]=Math.max(heights[lane]||0, Math.ceil(bar.getBoundingClientRect().height));
+    });
+    var offsets=[], contentH=0;
+    heights.forEach(function(height, lane){
+      offsets[lane]=contentH;
+      contentH+=height+GAP;
+    });
+    if(contentH) contentH-=GAP;
+    bars.forEach(function(bar){ bar.style.top=(offsets[Number(bar.dataset.lane)]||0)+"px"; });
+    lanes.style.height=contentH+"px";
+    week.style.height=Math.max(MIN, lanes.offsetTop+contentH+PAD)+"px";
+  });
 }
 
 function fitBadges(){
@@ -788,6 +806,7 @@ function fitBadges(){
   m.forEach(function(x){
     if(x.over || x.w - x.bw < 52) x.cb.style.display="none";
   });
+  fitCalendarRows();
 }
 
 function renderCal(){
