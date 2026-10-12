@@ -1031,9 +1031,28 @@ function modal(html, cls){
   return back;
 }
 
+function seriesItems(seriesId){
+  var out=[];
+  if(!seriesId) return out;
+  D.quarters.forEach(function(q, qIndex){
+    q.events.forEach(function(event, index){
+      if(event.seriesId===seriesId) out.push({event:event,qIndex:qIndex,index:index});
+    });
+  });
+  out.sort(function(a,b){ return a.event.start.localeCompare(b.event.start); });
+  return out;
+}
+function clearSeriesMeta(e){
+  delete e.seriesId;
+  delete e.repeatDays;
+  delete e.seriesStart;
+  delete e.seriesEnd;
+}
+
 function openDetail(id){
   var e = Q().events.filter(function(x){ return x.id===id; })[0];
   if(!e) return;
+  var series=seriesItems(e.seriesId);
   var t=tagOf(e.tag);
   var when = isDay(e) ? (e.start + (endOf(e)!==e.start ? (" ~ "+endOf(e)) : "")) :
     (e.precision==="month" ? (monthName(e.start.slice(0,7))+" 중 (날짜 미정)") :
@@ -1044,18 +1063,41 @@ function openDetail(id){
       + '<dt>일자</dt><dd>'+esc(when)+'</dd>'
       + '<dt>카테고리</dt><dd>'+esc(e.category)+'</dd>'
       + (e.program?'<dt>프로그램</dt><dd>'+esc(e.program)+'</dd>':"")
+      + (series.length?'<dt>반복</dt><dd>'+(e.repeatDays===14?"격주":"매주")+' · '+series.length+'회</dd>':"")
       + (e.owner?'<dt>담당</dt><dd>'+esc(e.owner)+'</dd>':"")
       + ((e.notes&&e.notes.length)?'<dt>메모</dt><dd><ul>'+e.notes.map(function(n){return "<li>"+esc(n)+"</li>";}).join("")+'</ul></dd>':"")
       + '</dl>'
       + (e.updatedBy?'<div class="meta">마지막 수정: '+esc(e.updatedBy)+' · '+esc(fmtTime(e.updatedAt))+'</div>':"")
       + '</div>'
-      + '<div class="mfoot"><button class="btn danger" id="dDel">삭제</button>'
+      + '<div class="mfoot"><button class="btn danger" id="dDel">'+(series.length?"1회 삭제":"삭제")+'</button>'
+      + (series.length?'<button class="btn danger" id="dSeriesDel">전체 삭제</button>':"")
       + '<span style="flex:1"></span>'
       + '<button class="btn" id="dClose">닫기</button>'
-      + '<button class="btn pri" id="dEdit">편집</button></div>';
+      + '<button class="btn'+(series.length?"":" pri")+'" id="dEdit">'+(series.length?"1회 편집":"편집")+'</button>'
+      + (series.length?'<button class="btn pri" id="dSeriesEdit">전체 편집</button>':"")
+      + '</div>';
   var m=modal(h);
   m.querySelector("#dClose").onclick=m.close;
   m.querySelector("#dEdit").onclick=function(){ m.close(); openForm(e); };
+  if(series.length){
+    m.querySelector("#dSeriesEdit").onclick=function(){ m.close(); openForm(series[0].event, true); };
+    m.querySelector("#dSeriesDel").onclick=function(){
+      if(!confirm("“"+e.title+"” 반복 일정 "+series.length+"회를 모두 삭제할까요?")) return;
+      var removed=series.map(function(item){
+        return {qIndex:item.qIndex,index:item.index,event:JSON.parse(JSON.stringify(item.event))};
+      });
+      D.quarters.forEach(function(q){
+        q.events=q.events.filter(function(x){ return x.seriesId!==e.seriesId; });
+      });
+      m.close(); render(); scheduleSave();
+      toast("반복 일정 전체 삭제: "+e.title, {undo:function(){
+        removed.forEach(function(item){
+          D.quarters[item.qIndex].events.splice(item.index,0,item.event);
+        });
+        render(); scheduleSave();
+      }});
+    };
+  }
   m.querySelector("#dDel").onclick=function(){
     if(!confirm("“"+e.title+"” 을 삭제할까요?")) return;
     var idx=Q().events.indexOf(e), copy=JSON.parse(JSON.stringify(e));
@@ -1071,11 +1113,17 @@ function fmtTime(s){
   return (d.getMonth()+1)+"/"+d.getDate()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
 }
 
-function openForm(ev){
+function openForm(ev, editSeries){
+  editSeries=!!editSeries;
   var isNew = !ev;
-  var e = ev || { id:uid(), title:"", category:D.categories[0], tag:Object.keys(D.tags)[0],
-                  precision:"day", start:Q().months[0]+"-01", end:"", owner:"", notes:[] };
-  var h='<div class="mtop"><h3>'+(isNew?"일정 추가":"일정 편집")+'</h3></div><div class="mbody">'
+  var repeatMode=isNew || editSeries;
+  var original=ev||null;
+  var e = ev ? JSON.parse(JSON.stringify(ev)) :
+    { id:uid(), title:"", category:D.categories[0], tag:Object.keys(D.tags)[0],
+      precision:"day", start:Q().months[0]+"-01", end:"", owner:"", notes:[] };
+  var initialRepeat=editSeries ? Number(e.repeatDays||7) : 0;
+  var initialRepeatEnd=editSeries ? (e.seriesEnd||seriesItems(e.seriesId).slice(-1)[0].event.start) : Q().periodEnd;
+  var h='<div class="mtop"><h3>'+(isNew?"일정 추가":editSeries?"반복 일정 전체 편집":"일정 편집")+'</h3></div><div class="mbody">'
     + '<label class="f"><span>제목 *</span><input id="fT" value="'+esc(e.title)+'" /></label>'
     + '<div class="two">'
     + '<label class="f"><span>카테고리</span><select id="fC">'
@@ -1093,11 +1141,13 @@ function openForm(ev){
     + '<label class="f"><span>시작일</span><input type="date" id="fS" value="'+esc(e.start||"")+'" /></label>'
     + '<label class="f"><span>종료일</span><input type="date" id="fE" value="'+esc(endOf(e)||"")+'" /></label>'
     + '</div>'
-    + (isNew?'<div class="two" id="fRepeatWrap">'
+    + (repeatMode?'<div class="two" id="fRepeatWrap">'
       + '<label class="f"><span>반복</span><select id="fRepeat">'
-      + '<option value="0">반복 없음</option><option value="7">매주</option><option value="14">격주</option>'
+      + '<option value="0"'+(initialRepeat===0?' selected':"")+'>반복 없음</option>'
+      + '<option value="7"'+(initialRepeat===7?' selected':"")+'>매주</option>'
+      + '<option value="14"'+(initialRepeat===14?' selected':"")+'>격주</option>'
       + '</select></label>'
-      + '<label class="f" id="fRepeatEndWrap"><span>반복 종료일</span><input type="date" id="fRepeatEnd" value="'+esc(Q().periodEnd)+'" /></label>'
+      + '<label class="f" id="fRepeatEndWrap"><span>반복 종료일</span><input type="date" id="fRepeatEnd" value="'+esc(initialRepeatEnd)+'" /></label>'
       + '</div>':"")
     + '<label class="f" id="fMonthWrap"><span>월</span><select id="fM">'
     + Q().months.map(function(m){ return '<option value="'+m+'"'+((e.start||"").slice(0,7)===m?" selected":"")+'>'+monthName(m)+'</option>'; }).join("")
@@ -1110,10 +1160,10 @@ function openForm(ev){
     var p=m.querySelector("#fP").value;
     m.querySelector("#fDates").style.display = p==="day" ? "" : "none";
     m.querySelector("#fMonthWrap").style.display = p==="month" ? "" : "none";
-    if(isNew) m.querySelector("#fRepeatWrap").style.display = p==="day" ? "" : "none";
+    if(repeatMode) m.querySelector("#fRepeatWrap").style.display = p==="day" ? "" : "none";
   }
   function syncRepeat(){
-    if(!isNew) return;
+    if(!repeatMode) return;
     m.querySelector("#fRepeatEndWrap").style.display =
       Number(m.querySelector("#fRepeat").value) ? "" : "none";
   }
@@ -1128,7 +1178,7 @@ function openForm(ev){
   }
   m.querySelector("#fC").onchange=function(){ syncProgram(""); };
   syncProgram(e.program||"");
-  if(isNew) m.querySelector("#fRepeat").onchange=syncRepeat;
+  if(repeatMode) m.querySelector("#fRepeat").onchange=syncRepeat;
   m.querySelector("#fP").onchange=sync; sync();
   syncRepeat();
   m.querySelector("#fX").onclick=m.close;
@@ -1153,7 +1203,7 @@ function openForm(ev){
     e.owner=m.querySelector("#fO").value.trim();
     e.notes=m.querySelector("#fN").value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
 
-    var repeatDays=isNew && e.precision==="day" ? Number(m.querySelector("#fRepeat").value) : 0;
+    var repeatDays=repeatMode && e.precision==="day" ? Number(m.querySelector("#fRepeat").value) : 0;
     var occurrences=[{start:e.start,end:e.end,destIdx:qi}];
     if(repeatDays){
       var repeatEnd=m.querySelector("#fRepeatEnd").value;
@@ -1183,30 +1233,47 @@ function openForm(ev){
     }
 
     var destIdx=occurrences[0].destIdx;
-    var fromIdx=qi, moved=false;
-    if(isNew){
+    var moved=false;
+    if(isNew || editSeries){
+      var activeSeriesId=editSeries ? e.seriesId : (repeatDays ? uid() : null);
+      if(editSeries){
+        D.quarters.forEach(function(q){
+          q.events=q.events.filter(function(x){ return x.seriesId!==activeSeriesId; });
+        });
+      }
       occurrences.forEach(function(occ, i){
         var item=i===0 ? e : JSON.parse(JSON.stringify(e));
         if(i>0) item.id=uid();
         item.start=occ.start;
         item.end=occ.end;
+        if(repeatDays){
+          item.seriesId=activeSeriesId;
+          item.repeatDays=repeatDays;
+          item.seriesStart=occurrences[0].start;
+          item.seriesEnd=occurrences[occurrences.length-1].start;
+        } else {
+          clearSeriesMeta(item);
+        }
         touch(item);
         D.quarters[occ.destIdx].events.push(item);
       });
       moved=(destIdx!==qi);
     } else {
+      clearSeriesMeta(e);
       touch(e);
-      var cur=Q().events.indexOf(e);
+      var cur=Q().events.indexOf(original);
       if(destIdx!==qi && cur>=0){
         Q().events.splice(cur,1);
         D.quarters[destIdx].events.push(e);
         moved=true;
+      } else if(cur>=0){
+        Q().events[cur]=e;
       }
     }
     m.close();
     if(moved) gotoQuarter(destIdx);
     render(); scheduleSave();
-    if(repeatDays) toast("반복 일정 "+occurrences.length+"건 추가: "+e.title);
+    if(repeatDays) toast("반복 일정 "+occurrences.length+"건 "+(editSeries?"전체 수정":"추가")+": "+e.title);
     else if(moved) toast((isNew?"추가: ":"저장: ")+e.title+" — "+D.quarters[destIdx].label+" 로 이동했습니다");
     else toast((isNew?"추가: ":"저장: ")+e.title);
   };
