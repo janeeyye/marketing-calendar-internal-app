@@ -1093,6 +1093,12 @@ function openForm(ev){
     + '<label class="f"><span>시작일</span><input type="date" id="fS" value="'+esc(e.start||"")+'" /></label>'
     + '<label class="f"><span>종료일</span><input type="date" id="fE" value="'+esc(endOf(e)||"")+'" /></label>'
     + '</div>'
+    + (isNew?'<div class="two" id="fRepeatWrap">'
+      + '<label class="f"><span>반복</span><select id="fRepeat">'
+      + '<option value="0">반복 없음</option><option value="7">매주</option><option value="14">격주</option>'
+      + '</select></label>'
+      + '<label class="f" id="fRepeatEndWrap"><span>반복 종료일</span><input type="date" id="fRepeatEnd" value="'+esc(Q().periodEnd)+'" /></label>'
+      + '</div>':"")
     + '<label class="f" id="fMonthWrap"><span>월</span><select id="fM">'
     + Q().months.map(function(m){ return '<option value="'+m+'"'+((e.start||"").slice(0,7)===m?" selected":"")+'>'+monthName(m)+'</option>'; }).join("")
     + '</select></label>'
@@ -1104,6 +1110,12 @@ function openForm(ev){
     var p=m.querySelector("#fP").value;
     m.querySelector("#fDates").style.display = p==="day" ? "" : "none";
     m.querySelector("#fMonthWrap").style.display = p==="month" ? "" : "none";
+    if(isNew) m.querySelector("#fRepeatWrap").style.display = p==="day" ? "" : "none";
+  }
+  function syncRepeat(){
+    if(!isNew) return;
+    m.querySelector("#fRepeatEndWrap").style.display =
+      Number(m.querySelector("#fRepeat").value) ? "" : "none";
   }
   function syncProgram(selected){
     var values=PROGRAMS_BY_CATEGORY[m.querySelector("#fC").value]||[];
@@ -1116,7 +1128,9 @@ function openForm(ev){
   }
   m.querySelector("#fC").onchange=function(){ syncProgram(""); };
   syncProgram(e.program||"");
+  if(isNew) m.querySelector("#fRepeat").onchange=syncRepeat;
   m.querySelector("#fP").onchange=sync; sync();
+  syncRepeat();
   m.querySelector("#fX").onclick=m.close;
   m.querySelector("#fOk").onclick=function(){
     var title=m.querySelector("#fT").value.trim();
@@ -1139,23 +1153,49 @@ function openForm(ev){
     e.owner=m.querySelector("#fO").value.trim();
     e.notes=m.querySelector("#fN").value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
 
-    var destIdx=qi;
-    if(e.precision==="day"){
-      destIdx=quarterIndexFor(e.start);
-      if(destIdx<0){
-        alert("선택한 날짜 "+e.start+" 은(는) 등록된 분기에 없습니다.\n\n"
-            + "먼저 ⋯ 메뉴의 ‘다음 분기 만들기’로 해당 분기를 만든 뒤 다시 시도해주세요.\n"
-            + "현재 분기: "+Q().label+" ("+Q().periodStart+" ~ "+Q().periodEnd+")");
+    var repeatDays=isNew && e.precision==="day" ? Number(m.querySelector("#fRepeat").value) : 0;
+    var occurrences=[{start:e.start,end:e.end,destIdx:qi}];
+    if(repeatDays){
+      var repeatEnd=m.querySelector("#fRepeatEnd").value;
+      if(!repeatEnd || repeatEnd<e.start){
+        alert("반복 종료일은 시작일 이후로 선택해주세요.");
         return;
+      }
+      var span=diffDays(e.start,e.end);
+      occurrences=[];
+      for(var day=e.start;day<=repeatEnd;day=addDays(day,repeatDays)){
+        occurrences.push({start:day,end:addDays(day,span),destIdx:-1});
+        if(occurrences.length>100){
+          alert("반복 일정은 한 번에 최대 100건까지 만들 수 있습니다.");
+          return;
+        }
+      }
+    }
+    if(e.precision==="day"){
+      for(var oi=0;oi<occurrences.length;oi++){
+        occurrences[oi].destIdx=quarterIndexFor(occurrences[oi].start);
+        if(occurrences[oi].destIdx<0){
+          alert("반복 날짜 "+occurrences[oi].start+" 은(는) 등록된 분기에 없습니다.\n\n"
+              + "반복 종료일을 줄이거나, 먼저 ⋯ 메뉴의 ‘다음 분기 만들기’로 해당 분기를 만들어주세요.");
+          return;
+        }
       }
     }
 
-    touch(e);
+    var destIdx=occurrences[0].destIdx;
     var fromIdx=qi, moved=false;
     if(isNew){
-      D.quarters[destIdx].events.push(e);
+      occurrences.forEach(function(occ, i){
+        var item=i===0 ? e : JSON.parse(JSON.stringify(e));
+        if(i>0) item.id=uid();
+        item.start=occ.start;
+        item.end=occ.end;
+        touch(item);
+        D.quarters[occ.destIdx].events.push(item);
+      });
       moved=(destIdx!==qi);
     } else {
+      touch(e);
       var cur=Q().events.indexOf(e);
       if(destIdx!==qi && cur>=0){
         Q().events.splice(cur,1);
@@ -1166,7 +1206,8 @@ function openForm(ev){
     m.close();
     if(moved) gotoQuarter(destIdx);
     render(); scheduleSave();
-    if(moved) toast((isNew?"추가: ":"저장: ")+e.title+" — "+D.quarters[destIdx].label+" 로 이동했습니다");
+    if(repeatDays) toast("반복 일정 "+occurrences.length+"건 추가: "+e.title);
+    else if(moved) toast((isNew?"추가: ":"저장: ")+e.title+" — "+D.quarters[destIdx].label+" 로 이동했습니다");
     else toast((isNew?"추가: ":"저장: ")+e.title);
   };
 }
