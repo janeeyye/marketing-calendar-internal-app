@@ -765,7 +765,7 @@ function renderMonth(ym, dens, recs){
       var nd=(e.notes&&e.notes.length)?'<span class="nd" title="'+esc(e.notes.join(" · "))+'">·</span>':"";
       var pre=sg.headless?"◂ ":"";
       var tip=e.title+"  \u2014  "+(TAG_FULL[e.tag]||e.tag)+"  \u00b7  "+e.category;
-      h+='<div class="bar" draggable="true" data-id="'+e.id+'" data-lane="'+sg.lane+'" style="'+style+'" title="'+esc(tip)+'">'
+      h+='<div class="bar" draggable="true" data-id="'+e.id+'" data-lane="'+sg.lane+'" data-col="'+sg.col+'" data-span="'+sg.span+'" style="'+style+'" title="'+esc(tip)+'">'
          + (sg.headless?"":catBadge(e))
          + '<span class="bt">' + pre + esc(e.title) + nd + '</span>'
          + '</div>';
@@ -781,18 +781,21 @@ function fitCalendarRows(){
   Array.prototype.forEach.call(document.querySelectorAll("#viewCal .week"), function(week){
     var lanes=week.querySelector(".lanes");
     var bars=Array.prototype.slice.call(lanes.querySelectorAll(".bar"));
-    var heights=[];
+    bars.sort(function(a,b){
+      return Number(a.dataset.lane)-Number(b.dataset.lane)
+        || Number(a.dataset.col)-Number(b.dataset.col);
+    });
+    var placed=[], contentH=0;
     bars.forEach(function(bar){
-      var lane=Number(bar.dataset.lane);
-      heights[lane]=Math.max(heights[lane]||0, Math.ceil(bar.getBoundingClientRect().height));
+      var start=Number(bar.dataset.col), end=start+Number(bar.dataset.span), top=0;
+      placed.forEach(function(other){
+        if(start<other.end && other.start<end) top=Math.max(top, other.bottom+GAP);
+      });
+      var height=Math.ceil(bar.getBoundingClientRect().height);
+      bar.style.top=top+"px";
+      placed.push({start:start,end:end,bottom:top+height});
+      contentH=Math.max(contentH, top+height);
     });
-    var offsets=[], contentH=0;
-    heights.forEach(function(height, lane){
-      offsets[lane]=contentH;
-      contentH+=height+GAP;
-    });
-    if(contentH) contentH-=GAP;
-    bars.forEach(function(bar){ bar.style.top=(offsets[Number(bar.dataset.lane)]||0)+"px"; });
     lanes.style.height=contentH+"px";
     week.style.height=Math.max(MIN, lanes.offsetTop+contentH+PAD)+"px";
   });
