@@ -172,6 +172,7 @@ body.printing .bar .bt{white-space:nowrap;text-overflow:ellipsis;display:block}
   border:1px solid currentColor;background:transparent;
   opacity:.5;vertical-align:1px;line-height:1.5;
 }
+.cb.program{opacity:.72;letter-spacing:0;text-transform:none}
 .card .cb{flex:none;opacity:.45}
 .btn.retry{background:#fef2f2;border-color:#fecaca;color:#b91c1c;font-weight:600}
 .bar:active{cursor:grabbing}
@@ -466,11 +467,17 @@ var CAT_CODE={
   "Hero & Flagship":"FLAGSHIP", "Customer Stories":"CS", "In Person Events":"IPE",
   "Digital Events":"DIG", "3P Events":"3P", "Social":"SOC", "Paid Media":"PAID"
 };
+var PROGRAMS_BY_CATEGORY={ "Digital Events":["Discovery"] };
 function catCode(c){
   return CAT_CODE[c] || String(c||"").replace(/[^A-Za-z0-9]/g,"").slice(0,4).toUpperCase();
 }
+function programBadge(e){
+  if(!showCat || !e.program) return "";
+  return '<span class="cb program" title="'+esc(e.category+" · "+e.program)+'">'+esc(e.program)+'</span>';
+}
 function catBadge(e){
   if(!showCat || !e.category) return "";
+  if(e.program) return programBadge(e);
   return '<span class="cb" title="'+esc(e.category)+'">'+esc(catCode(e.category))+'</span>';
 }
 function weekKey(s){ var d=parse(s); d.setDate(d.getDate()-d.getDay()); return iso(d); }
@@ -555,7 +562,7 @@ function visible(e){
   if(filters.tags && !filters.tags.has(e.tag)) return false;
   if(filters.cats && !filters.cats.has(e.category)) return false;
   if(filters.q){
-    var hay=(e.title+" "+e.category+" "+e.tag+" "+(e.owner||"")+" "+(e.notes||[]).join(" ")).toLowerCase();
+    var hay=(e.title+" "+e.category+" "+(e.program||"")+" "+e.tag+" "+(e.owner||"")+" "+(e.notes||[]).join(" ")).toLowerCase();
     if(hay.indexOf(filters.q)<0) return false;
   }
   return true;
@@ -801,10 +808,11 @@ function fitBadges(){
   var m=keep.map(function(b){
     var t=b.querySelector(".bt");
     return { cb:b.querySelector(".cb"), bt:t, w:b.clientWidth, bw:b.querySelector(".cb").offsetWidth,
+             program:b.querySelector(".cb").classList.contains("program"),
              over: t ? (t.scrollHeight > t.clientHeight+1) : false };
   });
   m.forEach(function(x){
-    if(x.over || x.w - x.bw < 52) x.cb.style.display="none";
+    if(!x.program && (x.over || x.w - x.bw < 52)) x.cb.style.display="none";
   });
   fitCalendarRows();
 }
@@ -842,7 +850,7 @@ function renderBoard(){
         var when=isDay(e)?(Number(e.start.slice(8,10))+"일"+(endOf(e)!==e.start?("–"+Number(endOf(e).slice(8,10))+"일"):"")):
                  (e.precision==="month"?"월중":e.precision==="quarter"?"상시":"미정");
         h+='<div class="bitem'+(isDay(e)?"":" tbc")+'" data-id="'+e.id+'" style="'+st+'">'
-          + esc(e.title)+' <span style="opacity:.7">'+when+'</span></div>';
+          + programBadge(e)+esc(e.title)+' <span style="opacity:.7">'+when+'</span></div>';
       });
       h+='</td>';
     });
@@ -872,7 +880,7 @@ function renderList(){
     h+='<tr data-id="'+e.id+'" style="cursor:pointer"><td>'+esc(when)+'</td><td><b>'+esc(e.title)+'</b>'
       + ((e.notes&&e.notes.length)?'<div class="note">'+esc(e.notes.join(" · "))+'</div>':"")
       + '</td><td><span class="pill" style="background:'+t.pill+';color:#fff" title="'+esc(TAG_FULL[e.tag]||e.tag)+'">'+esc(e.tag)+'</span></td>'
-      + '<td>'+esc(e.category)+'</td><td>'+esc(e.owner||"")+'</td></tr>';
+      + '<td>'+esc(e.category)+(e.program?'<div class="note">'+esc(e.program)+'</div>':"")+'</td><td>'+esc(e.owner||"")+'</td></tr>';
   });
   h+='</tbody></table></div>';
   $("viewList").innerHTML=h;
@@ -1031,6 +1039,7 @@ function openDetail(id){
       + '<div class="mbody"><dl class="det">'
       + '<dt>일자</dt><dd>'+esc(when)+'</dd>'
       + '<dt>카테고리</dt><dd>'+esc(e.category)+'</dd>'
+      + (e.program?'<dt>프로그램</dt><dd>'+esc(e.program)+'</dd>':"")
       + (e.owner?'<dt>담당</dt><dd>'+esc(e.owner)+'</dd>':"")
       + ((e.notes&&e.notes.length)?'<dt>메모</dt><dd><ul>'+e.notes.map(function(n){return "<li>"+esc(n)+"</li>";}).join("")+'</ul></dd>':"")
       + '</dl>'
@@ -1071,6 +1080,7 @@ function openForm(ev){
     + '<label class="f"><span>Solution Area</span><select id="fG">'
     + Object.keys(D.tags).map(function(t){ return '<option'+(t===e.tag?" selected":"")+'>'+esc(t)+'</option>'; }).join("")
     + '</select></label></div>'
+    + '<label class="f" id="fProgramWrap"><span>Digital Event 프로그램</span><select id="fR"></select></label>'
     + '<label class="f"><span>날짜 확정도</span><select id="fP">'
     + [["day","날짜 확정"],["month","월만 확정"],["quarter","분기 상시"],["tbc","미정"]].map(function(p){
         return '<option value="'+p[0]+'"'+(p[0]===e.precision?" selected":"")+'>'+p[1]+'</option>'; }).join("")
@@ -1091,6 +1101,17 @@ function openForm(ev){
     m.querySelector("#fDates").style.display = p==="day" ? "" : "none";
     m.querySelector("#fMonthWrap").style.display = p==="month" ? "" : "none";
   }
+  function syncProgram(selected){
+    var values=PROGRAMS_BY_CATEGORY[m.querySelector("#fC").value]||[];
+    var select=m.querySelector("#fR");
+    select.innerHTML='<option value="">해당 없음</option>'+values.map(function(p){
+      return '<option value="'+esc(p)+'">'+esc(p)+'</option>';
+    }).join("");
+    if(values.indexOf(selected)>=0) select.value=selected;
+    m.querySelector("#fProgramWrap").style.display=values.length?"":"none";
+  }
+  m.querySelector("#fC").onchange=function(){ syncProgram(""); };
+  syncProgram(e.program||"");
   m.querySelector("#fP").onchange=sync; sync();
   m.querySelector("#fX").onclick=m.close;
   m.querySelector("#fOk").onclick=function(){
@@ -1098,6 +1119,8 @@ function openForm(ev){
     if(!title){ alert("제목을 입력해주세요"); return; }
     e.title=title;
     e.category=m.querySelector("#fC").value;
+    var program=m.querySelector("#fR").value;
+    if(program) e.program=program; else delete e.program;
     e.tag=m.querySelector("#fG").value;
     e.precision=m.querySelector("#fP").value;
     if(e.precision==="day"){
@@ -1547,6 +1570,7 @@ function exportIcs(){
     var s=(e.start||Q().months[0]+"-01").replace(/-/g,"");
     var en=addDays(isDay(e)?endOf(e):(e.start||Q().months[0]+"-01"),1).replace(/-/g,"");
     var desc=["Solution Area: "+e.tag,"Category: "+e.category];
+    if(e.program) desc.push("Program: "+e.program);
     if(e.owner) desc.push("담당: "+e.owner);
     if(e.notes&&e.notes.length){ desc.push(""); e.notes.forEach(function(n){ desc.push("- "+n); }); }
     if(!isDay(e)) desc.push("","※ 날짜가 확정되지 않아 임시 배치된 항목입니다.");
